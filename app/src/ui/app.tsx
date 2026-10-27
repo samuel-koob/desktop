@@ -662,7 +662,13 @@ export class App extends React.Component<IAppProps, IAppState> {
     inBackground: boolean,
     skipGuidCheck: boolean = false
   ) {
-    if (__LINUX__ || __RELEASE_CHANNEL__ === 'development') {
+    // This fork has no update server of its own, and GitHub's would replace it
+    // with upstream GitHub Desktop.
+    if (
+      __LINUX__ ||
+      __RELEASE_CHANNEL__ === 'development' ||
+      __UPDATES_URL__.startsWith('https://central.github.com/')
+    ) {
       return
     }
 
