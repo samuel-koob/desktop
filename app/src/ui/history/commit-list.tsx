@@ -730,13 +730,9 @@ export class CommitList extends React.Component<
     const canBeUndone =
       this.props.canUndoCommits === true && isLocal && row === 0
     const canBeAmended = this.props.canAmendCommits === true && row === 0
-    // The user can reset to any commit up to the first non-local one (included).
-    // They cannot reset to the most recent commit... because they're already
-    // in it.
-    const isResettableCommit =
-      row > 0 && row <= this.props.localCommitSHAs.length
-    const canBeResetTo =
-      this.props.canResetToCommits === true && isResettableCommit
+    // The user can reset to any commit except the most recent one... because
+    // they're already in it.
+    const canBeResetTo = this.props.canResetToCommits === true && row > 0
     const canBeCheckedOut = row > 0 //Cannot checkout the current commit
 
     let viewOnGitHubLabel = 'View on GitHub'

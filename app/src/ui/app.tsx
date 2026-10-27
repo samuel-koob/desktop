@@ -2543,6 +2543,10 @@ export class App extends React.Component<IAppProps, IAppState> {
             dispatcher={this.props.dispatcher}
             repository={repository}
             commit={commit}
+            hasUncommittedChanges={
+              this.props.repositoryStateManager.get(repository).changesState
+                .workingDirectory.files.length > 0
+            }
             onDismissed={onPopupDismissedFn}
           />
         )

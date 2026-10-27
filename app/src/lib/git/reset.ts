@@ -22,6 +22,20 @@ export const enum GitResetMode {
    * This is the default action for git reset.
    */
   Mixed,
+
+  /**
+   * Resets the index and updates the files in the working tree that differ
+   * between <commit> and HEAD. Aborts if a file that differs also has local
+   * changes.
+   */
+  Keep,
+
+  /**
+   * Resets the index and updates the files in the working tree that differ
+   * between <commit> and HEAD, keeping local changes. Aborts if a file that
+   * differs has unstaged local changes.
+   */
+  Merge,
 }
 
 function resetModeToArgs(mode: GitResetMode, ref: string): string[] {
@@ -32,6 +46,10 @@ function resetModeToArgs(mode: GitResetMode, ref: string): string[] {
       return ['reset', ref]
     case GitResetMode.Soft:
       return ['reset', '--soft', ref]
+    case GitResetMode.Keep:
+      return ['reset', '--keep', ref]
+    case GitResetMode.Merge:
+      return ['reset', '--merge', ref]
     default:
       return assertNever(mode, `Unknown reset mode: ${mode}`)
   }

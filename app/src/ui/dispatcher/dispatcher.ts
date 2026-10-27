@@ -37,6 +37,7 @@ import {
   getRebaseSnapshot,
   getRepositoryType,
   listWorktrees,
+  GitResetMode,
 } from '../../lib/git'
 import { isGitOnPath } from '../../lib/is-git-on-path'
 import {
@@ -965,17 +966,26 @@ export class Dispatcher {
     return this.appStore._undoCommit(repository, commit, showConfirmationDialog)
   }
 
-  /** Reset to a given commit. */
+  /**
+   * Reset to a given commit.
+   *
+   * @param showConfirmationDialog - Let the user pick the reset mode first
+   * @param mode - The reset mode used when no dialog is shown
+   */
   public resetToCommit(
     repository: Repository,
     commit: Commit,
-    showConfirmationDialog: boolean = true
+    showConfirmationDialog: boolean = true,
+    mode?: GitResetMode
   ): Promise<void> {
-    this.statsStore.increment('resetToCommitCount')
+    if (!showConfirmationDialog) {
+      this.statsStore.increment('resetToCommitCount')
+    }
     return this.appStore._resetToCommit(
       repository,
       commit,
-      showConfirmationDialog
+      showConfirmationDialog,
+      mode
     )
   }
 

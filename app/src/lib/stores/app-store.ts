@@ -5883,16 +5883,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public async _resetToCommit(
     repository: Repository,
     commit: Commit,
-    showConfirmationDialog: boolean
+    showConfirmationDialog: boolean,
+    mode: GitResetMode = GitResetMode.Mixed
   ): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
-    const repositoryState = this.repositoryStateCache.get(repository)
-    const { changesState } = repositoryState
-    const isWorkingDirectoryClean =
-      changesState.workingDirectory.files.length === 0
 
-    // Warn the user if there are changes in the working directory
-    if (showConfirmationDialog && !isWorkingDirectoryClean) {
+    // Let the user pick the reset mode (and warn about changes in progress)
+    if (showConfirmationDialog) {
       return this._showPopup({
         type: PopupType.WarningBeforeReset,
         repository,
@@ -5907,10 +5904,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
 
     await gitStore.performFailableOperation(() =>
-      reset(repository, GitResetMode.Mixed, commit.sha)
+      reset(repository, mode, commit.sha)
     )
-
-    // this.statsStore.recordCommitUndone(isWorkingDirectoryClean)
 
     return this._refreshRepository(repository)
   }
