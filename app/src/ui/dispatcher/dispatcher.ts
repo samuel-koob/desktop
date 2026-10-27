@@ -757,9 +757,14 @@ export class Dispatcher {
     return this.appStore._push(repository, options)
   }
 
-  /** Pull the current branch. */
-  public pull(repository: Repository): Promise<void> {
-    return this.appStore._pull(repository)
+  /**
+   * Pull the current branch.
+   *
+   * @param rebase - Rebase (true) or merge (false) instead of using the
+   *                 repository's pull.rebase config
+   */
+  public pull(repository: Repository, rebase?: boolean): Promise<void> {
+    return this.appStore._pull(repository, rebase)
   }
 
   /** Fetch a specific refspec for the repository. */
@@ -2316,7 +2321,7 @@ export class Dispatcher {
         return this.push(retryAction.repository)
 
       case RetryActionType.Pull:
-        return this.pull(retryAction.repository)
+        return this.pull(retryAction.repository, retryAction.rebase)
 
       case RetryActionType.Fetch:
         return this.fetch(retryAction.repository, FetchType.UserInitiatedTask)

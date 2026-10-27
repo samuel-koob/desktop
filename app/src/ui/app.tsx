@@ -2183,6 +2183,11 @@ export class App extends React.Component<IAppProps, IAppState> {
             key="push-needs-pull"
             dispatcher={this.props.dispatcher}
             repository={popup.repository}
+            fromPull={popup.fromPull}
+            pullWithRebase={
+              this.props.repositoryStateManager.get(popup.repository)
+                .branchesState.pullWithRebase
+            }
             onDismissed={onPopupDismissedFn}
           />
         )

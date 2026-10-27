@@ -5480,14 +5480,33 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
-  public async _pull(repository: Repository): Promise<void> {
+  public async _pull(repository: Repository, rebase?: boolean): Promise<void> {
+    const { aheadBehind } = this.repositoryStateCache.get(repository)
+
+    // A diverged branch can be merged or rebased, so let the user pick
+    if (
+      rebase === undefined &&
+      aheadBehind !== null &&
+      aheadBehind.ahead > 0 &&
+      aheadBehind.behind > 0
+    ) {
+      return this._showPopup({
+        type: PopupType.PushNeedsPull,
+        repository,
+        fromPull: true,
+      })
+    }
+
     return this.withRefreshedGitHubRepository(repository, repository => {
-      return this.performPull(repository)
+      return this.performPull(repository, rebase)
     })
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
-  private async performPull(repository: Repository): Promise<void> {
+  private async performPull(
+    repository: Repository,
+    rebase?: boolean
+  ): Promise<void> {
     return this.withPushPullFetch(repository, async () => {
       const gitStore = this.gitStoreCache.get(repository)
       const remote = gitStore.currentRemote
@@ -5552,9 +5571,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
           const retryAction: RetryAction = {
             type: RetryActionType.Pull,
             repository,
+            rebase,
           }
 
-          if (gitStore.pullWithRebase) {
+          if (rebase ?? gitStore.pullWithRebase) {
             this.statsStore.increment('pullWithRebaseCount')
           } else {
             this.statsStore.increment('pullWithDefaultSettingCount')
@@ -5565,6 +5585,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
             .performFailableOperation(
               async () => {
                 await pullRepo(repository, remote, {
+                  rebase,
                   progressCallback: progress => {
                     this.updatePushPullFetchProgress(repository, {
                       ...progress,

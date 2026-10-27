@@ -25,7 +25,7 @@ export enum RetryActionType {
 /** The retriable actions and their associated data. */
 export type RetryAction =
   | { type: RetryActionType.Push; repository: Repository }
-  | { type: RetryActionType.Pull; repository: Repository }
+  | { type: RetryActionType.Pull; repository: Repository; rebase?: boolean }
   | { type: RetryActionType.Fetch; repository: Repository }
   | {
       type: RetryActionType.Clone
