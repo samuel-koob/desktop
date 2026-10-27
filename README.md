@@ -1,3 +1,19 @@
+## About this fork
+
+This fork adds the following to GitHub Desktop:
+
+- **Merge or rebase when pulling:** when your branch and the remote have
+  diverged, Pull (and the "Newer commits on remote" dialog after a rejected
+  push) asks whether to merge or rebase. It starts on your `pull.rebase`
+  setting.
+- **Reset mode choice:** "Reset to commit…" works on any commit below the
+  newest one, not only unpushed ones, and lets you pick soft, mixed, keep,
+  merge or hard.
+- **Add local repositories:** File > "Add local repositories…" adds every Git
+  repository directly inside a folder you pick.
+- **Blue logo:** the Windows app icon and About logo are #005081 instead of
+  purple.
+
 # [GitHub Desktop](https://desktop.github.com)
 
 [GitHub Desktop](https://desktop.github.com/) is an open-source [Electron](https://www.electronjs.org/)-based
