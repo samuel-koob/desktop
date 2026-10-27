@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Installed as resources/app/static/github, four levels below the app.
+CONTENTS="$(dirname "$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")")"
+
+ELECTRON_RUN_AS_NODE=1 "$CONTENTS/desktop" "$CONTENTS/resources/app/cli.js" "$@"
+
+exit $?
