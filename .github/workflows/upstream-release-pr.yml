@@ -24,8 +24,9 @@ jobs:
           GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
         run: |
           set -euo pipefail
-          # The latest non-prerelease, so betas are skipped.
-          TAG=$(gh release view --repo desktop/desktop --json tagName -q .tagName)
+          # The newest stable release tag; upstream only publishes betas as GitHub releases.
+          TAG=$(git ls-remote --tags --refs --sort=-v:refname https://github.com/desktop/desktop.git 'release-*' \
+            | sed 's|.*refs/tags/||' | grep -vE 'beta|test' | head -1)
           BRANCH="upstream/$TAG"
           git fetch --no-tags https://github.com/desktop/desktop.git "refs/tags/$TAG:refs/tags/$TAG"
 
