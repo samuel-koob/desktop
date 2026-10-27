@@ -14,6 +14,14 @@ This fork adds the following to GitHub Desktop:
 - **Blue logo:** the Windows app icon and About logo are #005081 instead of
   purple.
 
+Also Linux `.deb` and `.rpm` packages are built as first-class targets.
+
+### Release schedule
+
+This fork is regularly updated whenever the upstream version pushes an update.
+The fork-specific features and changes are included whenever a major update releases.
+
+
 # [GitHub Desktop](https://desktop.github.com)
 
 [GitHub Desktop](https://desktop.github.com/) is an open-source [Electron](https://www.electronjs.org/)-based
