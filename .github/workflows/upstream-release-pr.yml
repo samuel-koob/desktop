@@ -1,0 +1,48 @@
+name: Upstream release PR
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  open-pr:
+    name: Open a PR for the latest upstream release
+    runs-on: ubuntu-latest
+    steps:
+      # A personal access token, because GITHUB_TOKEN can't push upstream's
+      # workflow changes, and PRs it opens don't trigger CI.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+      - name: Open PR
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The latest non-prerelease, so betas are skipped.
+          TAG=$(gh release view --repo desktop/desktop --json tagName -q .tagName)
+          BRANCH="upstream/$TAG"
+          git fetch --no-tags https://github.com/desktop/desktop.git "refs/tags/$TAG:refs/tags/$TAG"
+
+          if git merge-base --is-ancestor "$TAG" origin/development; then
+            echo "$TAG is already merged into development."
+            exit 0
+          fi
+          # The branch outlives a PR that was closed without merging, so a
+          # skipped release isn't proposed again.
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "$BRANCH already exists."
+            exit 0
+          fi
+
+          git push origin "$(git rev-parse "$TAG^{commit}"):refs/heads/$BRANCH"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base development --head "$BRANCH" \
+            --title "Merge upstream $TAG" \
+            --body "Merges GitHub Desktop [$TAG](https://github.com/desktop/desktop/releases/tag/$TAG) into development.
+
+          Use **Create a merge commit** (not squash or rebase) so the next upstream merge only brings in new changes."
