@@ -124,6 +124,13 @@ export function buildDefaultMenuTemplate({
         click: emit('add-local-repository'),
       },
       {
+        label: __DARWIN__
+          ? 'Add Local Repositories…'
+          : 'Add local repositor&ies…',
+        id: 'add-local-repositories',
+        click: emit('add-local-repositories'),
+      },
+      {
         label: __DARWIN__ ? 'Clone Repository…' : 'Clo&ne repository…',
         id: 'clone-repository',
         accelerator: 'CmdOrCtrl+Shift+O',

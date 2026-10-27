@@ -473,6 +473,8 @@ export class App extends React.Component<IAppProps, IAppState> {
         return this.chooseRepository()
       case 'add-local-repository':
         return this.showAddLocalRepo()
+      case 'add-local-repositories':
+        return this.props.dispatcher.addRepositoriesFromDirectory()
       case 'create-branch':
         return this.showCreateBranch()
       case 'show-branches':

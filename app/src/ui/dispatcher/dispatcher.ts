@@ -187,6 +187,11 @@ export class Dispatcher {
     return this.appStore._addRepositories(paths)
   }
 
+  /** Pick a directory and add all repositories directly inside it */
+  public addRepositoriesFromDirectory(): Promise<void> {
+    return this.appStore._addRepositoriesFromDirectory()
+  }
+
   /**
    * Add a tutorial repository.
    *

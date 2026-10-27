@@ -401,6 +401,7 @@ import {
 } from './notifications-store'
 import * as ipcRenderer from '../ipc-renderer'
 import { pathExists } from '../path-exists'
+import { findChildRepositories } from '../find-child-repositories'
 import { offsetFromNow } from '../offset-from'
 import { findContributionTargetDefaultBranch } from '../branch'
 import { ValidNotificationPullRequestReview } from '../valid-notification-pull-request-review'
@@ -8349,6 +8350,24 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     return addedRepositories
+  }
+
+  /** Add all repositories directly inside a directory the user picks */
+  public async _addRepositoriesFromDirectory(): Promise<void> {
+    const path = await showOpenDialog({ properties: ['openDirectory'] })
+
+    if (path === null) {
+      return
+    }
+
+    const repositoryPaths = await findChildRepositories(path)
+
+    if (repositoryPaths.length === 0) {
+      this.emitError(new Error(`No Git repositories found in ${path}.`))
+      return
+    }
+
+    await this._addRepositories(repositoryPaths)
   }
 
   public async _relocateRepository(repository: Repository): Promise<void> {
