@@ -1,0 +1,149 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - development
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 24.22.1
+
+jobs:
+  build:
+    name: ${{ matrix.friendlyName }} x64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            friendlyName: Windows
+          # The oldest supported runner, so the .deb runs on older glibc too.
+          - os: ubuntu-22.04
+            friendlyName: Linux
+    timeout-minutes: 60
+    env:
+      # Not 'production', 'beta' or 'test', so packaging skips code signing and
+      # delta packages, but still uses the production icons.
+      RELEASE_CHANNEL: fork
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev rpm
+      - uses: ./.github/actions/setup-ci-environment
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          arch: x64
+      - name: Build production app
+        run: yarn build:prod
+        env:
+          npm_config_arch: x64
+          TARGET_ARCH: x64
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        run: yarn package
+        env:
+          npm_config_arch: x64
+      - name: Package .deb and .rpm
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./app/package.json').version")
+          # Debian and RPM sort '~' before release versions, so 3.6.10~beta1 < 3.6.10.
+          PKG_VERSION=${VERSION//-/\~}
+          ROOT=$(mktemp -d)
+
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/lib" "$ROOT/usr/bin" \
+            "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+          cp -a dist/desktop-linux-x64 "$ROOT/usr/lib/github-desktop"
+          ln -s ../lib/github-desktop/desktop "$ROOT/usr/bin/github-desktop"
+          ln -s ../lib/github-desktop/resources/app/static/github "$ROOT/usr/bin/github"
+          cp app/static/linux/icon-logo.png "$ROOT/usr/share/icons/hicolor/512x512/apps/github-desktop.png"
+          # The packager and mktemp create owner-only directories, so open them up for all users.
+          chmod -R u+rwX,go+rX,go-w "$ROOT"
+          # Electron needs a setuid sandbox helper where unprivileged user namespaces are off.
+          chmod 4755 "$ROOT/usr/lib/github-desktop/chrome-sandbox"
+
+          cat > "$ROOT/usr/share/applications/github-desktop.desktop" <<EOF
+          [Desktop Entry]
+          Name=GitHub Desktop
+          Comment=Simple collaboration from your desktop
+          Exec=/usr/lib/github-desktop/desktop %U
+          Icon=github-desktop
+          Terminal=false
+          Type=Application
+          Categories=Development;RevisionControl;
+          MimeType=x-scheme-handler/x-github-client;x-scheme-handler/x-github-desktop-auth;x-scheme-handler/x-github-desktop-dev-auth;
+          StartupWMClass=GitHub Desktop
+          EOF
+
+          cat > "$ROOT/DEBIAN/control" <<EOF
+          Package: github-desktop
+          Version: $PKG_VERSION
+          Architecture: amd64
+          Maintainer: samuel-koob <samuel-koob@users.noreply.github.com>
+          Depends: git, libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1, libsecret-1-0, libgbm1, libasound2t64 | libasound2 (>= 1.0.17)
+          Recommends: gnome-keyring
+          Section: devel
+          Priority: optional
+          Description: GitHub Desktop
+           Simple collaboration from your desktop.
+          EOF
+
+          dpkg-deb --root-owner-group --build "$ROOT" "dist/github-desktop_${PKG_VERSION}_amd64.deb"
+
+          # The RPM packages the same tree, with Fedora/RHEL package names.
+          TOPDIR=$(mktemp -d)
+          cat > "$TOPDIR/github-desktop.spec" <<EOF
+          Name: github-desktop
+          Version: $PKG_VERSION
+          Release: 1
+          Summary: GitHub Desktop
+          License: MIT
+          BuildArch: x86_64
+          # Detected requirements would include libraries Electron bundles.
+          AutoReqProv: no
+          Requires: git, gtk3, libnotify, nss, libXScrnSaver, libXtst, xdg-utils, at-spi2-core, libuuid, libsecret, mesa-libgbm, alsa-lib
+          Recommends: gnome-keyring
+          # The app is prebuilt, so skip stripping, debug packages and build-id links.
+          %global debug_package %{nil}
+          %global __os_install_post %{nil}
+          %global _build_id_links none
+          # Ubuntu's rpmbuild otherwise leaves the payload almost uncompressed.
+          %global _binary_payload w6.xzdio
+
+          %description
+          Simple collaboration from your desktop.
+
+          %install
+          mkdir -p %{buildroot}
+          cp -a $ROOT/usr %{buildroot}/
+
+          %files
+          # Keeps the modes from the tree, including setuid on chrome-sandbox.
+          %defattr(-,root,root,-)
+          /usr/lib/github-desktop
+          /usr/bin/github-desktop
+          /usr/bin/github
+          /usr/share/applications/github-desktop.desktop
+          /usr/share/icons/hicolor/512x512/apps/github-desktop.png
+          EOF
+
+          rpmbuild -bb --define "_topdir $TOPDIR" "$TOPDIR/github-desktop.spec"
+          cp "$TOPDIR"/RPMS/x86_64/github-desktop-*.rpm dist/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.friendlyName }}-x64
+          path: |
+            dist/GitHubDesktopSetup-x64.exe
+            dist/GitHubDesktopSetup-x64.msi
+            dist/github-desktop_*_amd64.deb
+            dist/github-desktop-*.x86_64.rpm
+          if-no-files-found: error
