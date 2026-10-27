@@ -81,11 +81,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14-xlarge, windows-2022]
+        # No macOS builds in this fork; Mac users can use the official app.
+        os: [windows-2022]
         arch: [x64, arm64]
         include:
-          - os: macos-14-xlarge
-            friendlyName: macOS
           - os: windows-2022
             friendlyName: Windows
     timeout-minutes: 60
@@ -205,9 +204,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14-xlarge
-            friendlyName: macOS
-            arch: arm64
           - os: windows-2022
             friendlyName: Windows
             arch: x64
