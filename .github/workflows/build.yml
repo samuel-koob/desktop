@@ -147,3 +147,43 @@ jobs:
             dist/github-desktop_*_amd64.deb
             dist/github-desktop-*.x86_64.rpm
           if-no-files-found: error
+  release:
+    name: Publish release
+    needs: build
+    if: github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check for an unreleased upstream version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./app/package.json').version")
+          # Only stable versions, which come from merging an upstream release.
+          if [[ "$VERSION" == *-* ]]; then
+            echo "$VERSION is a prerelease; nothing to publish."
+          elif gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "v$VERSION is already released."
+          else
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v8
+        if: steps.version.outputs.version
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish v${{ steps.version.outputs.version }}
+        if: steps.version.outputs.version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" artifacts/* --target "$GITHUB_SHA" \
+            --title "GitHub Desktop $VERSION (fork)" \
+            --notes "Based on GitHub Desktop $VERSION ([upstream release notes](https://desktop.github.com/release-notes/)), plus this fork's changes listed in the [README](https://github.com/$GITHUB_REPOSITORY#readme).
+
+          The Windows installers are not code-signed, so Windows SmartScreen may warn before running them. This version doesn't update itself; download new releases from this page."
