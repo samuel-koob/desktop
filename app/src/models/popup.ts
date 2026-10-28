@@ -103,7 +103,6 @@ export enum PopupType {
   UnknownAuthors = 'UnknownAuthors',
   TestIcons = 'TestIcons',
   ConfirmCommitFilteredChanges = 'ConfirmCommitFilteredChanges',
-  TestAbout = 'TestAbout',
   TestCLIAction = 'TestCLIAction',
   TestCopilotSnapshotCard = 'TestCopilotSnapshotCard',
   TestTokenExpiration = 'TestTokenExpiration',
@@ -479,9 +478,6 @@ export type PopupDetail =
       type: PopupType.ConfirmCommitFilteredChanges
       onCommitAnyway: () => void
       showFilesToBeCommitted: () => void
-    }
-  | {
-      type: PopupType.TestAbout
     }
   | {
       type: PopupType.TestCLIAction
