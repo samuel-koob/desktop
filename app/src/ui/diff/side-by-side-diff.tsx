@@ -72,6 +72,8 @@ import { findDOMNode } from 'react-dom'
 import escapeRegExp from 'lodash/escapeRegExp'
 import ReactDOM from 'react-dom'
 import { AriaLiveContainer } from '../accessibility/aria-live-container'
+import { getNumber, setNumber } from '../../lib/local-storage'
+import { clamp } from '../../lib/clamp'
 
 const DefaultRowHeight = 20
 
@@ -215,12 +217,17 @@ interface ISideBySideDiffState {
 
   readonly ariaLiveMessage: string
 
+  /** Share of the row width taken by the "before" column in split mode (0-1) */
+  readonly beforeColumnRatio: number
+
   /** This tracks the last expanded hunk index so that we can refocus the expander after rerender */
   readonly lastExpandedHunk: {
     hunkIndex: number
     expansionType: DiffHunkExpansionType
   } | null
 }
+
+const BeforeColumnRatioKey = 'side-by-side-diff-before-column-ratio'
 
 const listRowsHeightCache = new CellMeasurerCache({
   defaultHeight: DefaultRowHeight,
@@ -270,6 +277,7 @@ export class SideBySideDiff extends React.Component<
       selectingTextInRow: 'before',
       lastExpandedHunk: null,
       ariaLiveMessage: '',
+      beforeColumnRatio: getNumber(BeforeColumnRatioKey, 0.5),
     }
   }
 
@@ -421,6 +429,7 @@ export class SideBySideDiff extends React.Component<
       this.onDocumentSelectionChange
     )
     document.removeEventListener('mousemove', this.onUpdateSelection)
+    document.removeEventListener('mousemove', this.onColumnResize)
     this.removeContextMenuListenerFromDiff()
   }
 
@@ -433,6 +442,12 @@ export class SideBySideDiff extends React.Component<
     ) {
       this.initDiffSyntaxMode()
       this.clearListRowsHeightCache()
+    }
+
+    if (this.state.beforeColumnRatio !== prevState.beforeColumnRatio) {
+      // lines wrap, so a narrower column means taller rows
+      this.clearListRowsHeightCache()
+      this.virtualListRef.current?.recomputeRowHeights()
     }
 
     if (!textDiffEquals(this.props.diff, prevProps.diff)) {
@@ -600,6 +615,11 @@ export class SideBySideDiff extends React.Component<
         this.state.selectingTextInRow !== undefined,
       editable: canSelect(this.props.file),
     })
+    const style = this.props.showSideBySideDiff
+      ? ({
+          '--before-width': `${this.state.beforeColumnRatio * 100}%`,
+        } as React.CSSProperties)
+      : undefined
 
     return (
       /**
@@ -610,6 +630,7 @@ export class SideBySideDiff extends React.Component<
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
         className={containerClassName}
+        style={style}
         onMouseDown={this.onMouseDown}
         onKeyDown={this.onKeyDown}
       >
@@ -660,9 +681,48 @@ export class SideBySideDiff extends React.Component<
               />
             )}
           </AutoSizer>
+          {this.props.showSideBySideDiff && (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="column-resize-handle"
+              aria-label="Resize diff columns"
+              onMouseDown={this.onColumnResizeStart}
+              onDoubleClick={this.onColumnResizeReset}
+            />
+          )}
         </div>
       </div>
     )
+  }
+
+  private onColumnResizeStart = (ev: React.MouseEvent) => {
+    // keep the container's text/line selection handler out of it
+    ev.preventDefault()
+    ev.stopPropagation()
+    document.addEventListener('mousemove', this.onColumnResize)
+    document.addEventListener('mouseup', this.onColumnResizeEnd, {
+      once: true,
+    })
+  }
+
+  private onColumnResize = (ev: MouseEvent) => {
+    if (this.diffContainer === null) {
+      return
+    }
+    const rect = this.diffContainer.getBoundingClientRect()
+    const ratio = (ev.clientX - rect.left) / rect.width
+    this.setState({ beforeColumnRatio: clamp(ratio, 0.1, 0.9) })
+  }
+
+  private onColumnResizeEnd = () => {
+    document.removeEventListener('mousemove', this.onColumnResize)
+    setNumber(BeforeColumnRatioKey, this.state.beforeColumnRatio)
+  }
+
+  private onColumnResizeReset = () => {
+    this.setState({ beforeColumnRatio: 0.5 })
+    setNumber(BeforeColumnRatioKey, 0.5)
   }
 
   private overscanIndicesGetter = (params: OverscanIndicesGetterParams) => {
@@ -1303,7 +1363,7 @@ export class SideBySideDiff extends React.Component<
 
         if (this.props.showSideBySideDiff) {
           column =
-            ev.clientX <= rect.left + rect.width / 2
+            ev.clientX <= rect.left + rect.width * this.state.beforeColumnRatio
               ? DiffColumn.Before
               : DiffColumn.After
         } else {
