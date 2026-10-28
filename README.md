@@ -11,6 +11,14 @@ This fork adds the following to GitHub Desktop:
   merge or hard.
 - **Add local repositories:** File > "Add local repositories…" adds every Git
   repository directly inside a folder you pick.
+- **Commit search:** the History tab has a search box next to the branch
+  picker. Its options menu picks the fields to search (commit message,
+  committer, author, diff contents) and limits the search to the last 100 or
+  1,000 commits, or the last 30, 100 or 365 days.
+- **Resizable split diff:** drag the divider between the before and after
+  columns to change their widths; double-click it to go back to 50/50.
+- **Fork notice:** the About dialog says this is an unofficial fork and links
+  here instead of offering update checks.
 - **Blue logo:** the Windows app icon and About logo are #005081 instead of
   purple.
 
@@ -20,6 +28,11 @@ Also Linux `.deb` and `.rpm` packages are built as first-class targets.
 
 This fork is regularly updated whenever the upstream version pushes an update.
 The fork-specific features and changes are included whenever a major update releases.
+
+Fork changes between upstream releases ship as revisions of the last upstream
+version: `v3.6.10-1`, `v3.6.10-2` and so on. The app doesn't update itself, so
+download new versions from [Releases](https://github.com/samuel-koob/desktop/releases).
+The installers are not code-signed, so Windows SmartScreen may warn first.
 
 
 # [GitHub Desktop](https://desktop.github.com)

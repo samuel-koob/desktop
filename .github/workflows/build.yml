@@ -5,13 +5,56 @@ on:
     branches:
       - development
   workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Publish as the next fork revision (v3.6.10-1, -2, …)'
+        type: boolean
+        default: false
 
 env:
   NODE_VERSION: 24.22.1
 
 jobs:
+  version:
+    name: Pick release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      revision: ${{ steps.pick.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pick the release tag
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./app/package.json').version")
+          export VERSION
+          if [[ "$GITHUB_REF" != refs/heads/development ]]; then
+            echo "Releases are only published from development."
+          # Only stable versions, which come from merging an upstream release.
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "$VERSION is a prerelease; nothing to publish."
+          elif [[ "$PUBLISH_REVISION" == true ]]; then
+            LAST=$(gh release list --limit 1000 --json tagName --jq '
+              [.[].tagName | select(startswith("v" + env.VERSION + "-"))
+                | ltrimstr("v" + env.VERSION + "-") | select(test("^[0-9]+$"))
+                | tonumber] | max // 0')
+            REVISION=$((LAST + 1))
+            echo "tag=v$VERSION-$REVISION" >> "$GITHUB_OUTPUT"
+            echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          elif gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "v$VERSION is already released."
+          else
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          fi
   build:
     name: ${{ matrix.friendlyName }} x64
+    needs: version
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -29,6 +72,9 @@ jobs:
       # Not 'production', 'beta' or 'test', so packaging skips code signing and
       # delta packages, but still uses the production icons.
       RELEASE_CHANNEL: fork
+      # The app itself keeps the upstream version: Squirrel would launch an
+      # installed 3.6.10 over a 3.6.10-1, which semver sorts lower.
+      FORK_REVISION: ${{ needs.version.outputs.revision }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,6 +103,10 @@ jobs:
           VERSION=$(node -p "require('./app/package.json').version")
           # Debian and RPM sort '~' before release versions, so 3.6.10~beta1 < 3.6.10.
           PKG_VERSION=${VERSION//-/\~}
+          # Fork revisions sort after their upstream version: 3.6.10-1 > 3.6.10
+          # for dpkg, and Release 1.1 > 1 for rpm.
+          DEB_VERSION=$PKG_VERSION${FORK_REVISION:+-$FORK_REVISION}
+          RPM_RELEASE=1${FORK_REVISION:+.$FORK_REVISION}
           ROOT=$(mktemp -d)
 
           mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/lib" "$ROOT/usr/bin" \
@@ -85,7 +135,7 @@ jobs:
 
           cat > "$ROOT/DEBIAN/control" <<EOF
           Package: github-desktop
-          Version: $PKG_VERSION
+          Version: $DEB_VERSION
           Architecture: amd64
           Maintainer: samuel-koob <samuel-koob@users.noreply.github.com>
           Depends: git, libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1, libsecret-1-0, libgbm1, libasound2t64 | libasound2 (>= 1.0.17)
@@ -96,14 +146,14 @@ jobs:
            Simple collaboration from your desktop.
           EOF
 
-          dpkg-deb --root-owner-group --build "$ROOT" "dist/github-desktop_${PKG_VERSION}_amd64.deb"
+          dpkg-deb --root-owner-group --build "$ROOT" "dist/github-desktop_${DEB_VERSION}_amd64.deb"
 
           # The RPM packages the same tree, with Fedora/RHEL package names.
           TOPDIR=$(mktemp -d)
           cat > "$TOPDIR/github-desktop.spec" <<EOF
           Name: github-desktop
           Version: $PKG_VERSION
-          Release: 1
+          Release: $RPM_RELEASE
           Summary: GitHub Desktop
           License: MIT
           BuildArch: x86_64
@@ -149,41 +199,26 @@ jobs:
           if-no-files-found: error
   release:
     name: Publish release
-    needs: build
-    if: github.ref == 'refs/heads/development'
+    needs: [version, build]
+    if: needs.version.outputs.tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - name: Check for an unreleased upstream version
-        id: version
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          VERSION=$(node -p "require('./app/package.json').version")
-          # Only stable versions, which come from merging an upstream release.
-          if [[ "$VERSION" == *-* ]]; then
-            echo "$VERSION is a prerelease; nothing to publish."
-          elif gh release view "v$VERSION" > /dev/null 2>&1; then
-            echo "v$VERSION is already released."
-          else
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/download-artifact@v8
-        if: steps.version.outputs.version
         with:
           path: artifacts
           merge-multiple: true
-      - name: Publish v${{ steps.version.outputs.version }}
-        if: steps.version.outputs.version
+      - name: Publish ${{ needs.version.outputs.tag }}
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          gh release create "v$VERSION" artifacts/* --target "$GITHUB_SHA" \
-            --title "GitHub Desktop $VERSION (fork)" \
+          VERSION=${TAG%%-*}
+          VERSION=${VERSION#v}
+          gh release create "$TAG" artifacts/* --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --latest \
+            --title "GitHub Desktop ${TAG#v} (fork)" \
             --notes "Based on GitHub Desktop $VERSION ([upstream release notes](https://desktop.github.com/release-notes/)), plus this fork's changes listed in the [README](https://github.com/$GITHUB_REPOSITORY#readme).
 
           The Windows installers are not code-signed, so Windows SmartScreen may warn before running them. This version doesn't update itself; download new releases from this page."
