@@ -1,9 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - development
+  # No push trigger: Build already builds development after each merge.
   pull_request:
   workflow_call:
     inputs:
