@@ -916,6 +916,30 @@ export enum ComparisonMode {
  */
 export interface IDisplayHistory {
   readonly kind: HistoryTabMode.History
+
+  /** Set when the commit list holds the results of this search */
+  readonly search?: IHistorySearch
+}
+
+/** The commit data the history search looks at */
+export enum HistorySearchField {
+  Message = 'Message',
+  Author = 'Author',
+  Committer = 'Committer',
+  Diff = 'Diff',
+}
+
+export interface IHistorySearch {
+  readonly text: string
+  readonly fields: ReadonlyArray<HistorySearchField>
+
+  /** Only search the most recent commits, all history when not set */
+  readonly range?: IHistorySearchRange
+}
+
+export interface IHistorySearchRange {
+  readonly unit: 'commits' | 'days'
+  readonly count: number
 }
 
 /**
@@ -994,6 +1018,7 @@ export interface ICompareFormUpdate {
 
 export interface IViewHistory {
   readonly kind: HistoryTabMode.History
+  readonly search?: IHistorySearch
 }
 
 export interface ICompareToBranch {

@@ -22,7 +22,11 @@ import {
   ICommitMessage,
   DefaultCommitMessage,
 } from '../../models/commit-message'
-import { ComparisonMode } from '../app-state'
+import {
+  ComparisonMode,
+  HistorySearchField,
+  IHistorySearch,
+} from '../app-state'
 
 import { IAppShell } from '../app-shell'
 import {
@@ -74,12 +78,13 @@ import {
   updateRemoteHEAD,
   getRemoteHEAD,
   MergeOptions,
+  git,
 } from '../git'
 import { GitError as DugiteError } from '../../lib/git'
 import { GitError } from 'dugite'
 import { RetryAction, RetryActionType } from '../../models/retry-actions'
 import { UpstreamAlreadyExistsError } from './upstream-already-exists-error'
-import { forceUnwrap } from '../fatal-error'
+import { assertNever, forceUnwrap } from '../fatal-error'
 import {
   findUpstreamRemote,
   UpstreamRemoteName,
@@ -102,6 +107,25 @@ import { findDefaultBranch } from '../find-default-branch'
 
 /** The number of commits to load from history per batch. */
 const CommitBatchSize = 100
+
+/** The max number of commits a history search returns per searched field. */
+const SearchResultLimit = 1000
+
+/** Case-insensitive, literal `git log` filter for one history search field */
+function getSearchArgs(field: HistorySearchField, text: string) {
+  switch (field) {
+    case HistorySearchField.Message:
+      return ['-i', '-F', `--grep=${text}`]
+    case HistorySearchField.Author:
+      return ['-i', '-F', `--author=${text}`]
+    case HistorySearchField.Committer:
+      return ['-i', '-F', `--committer=${text}`]
+    case HistorySearchField.Diff:
+      return ['-i', '--no-textconv', `-S${text}`]
+    default:
+      return assertNever(field, `Unknown search field: ${field}`)
+  }
+}
 
 const LoadingHistoryRequestKey = 'history'
 
@@ -232,6 +256,57 @@ export class GitStore extends BaseStore {
     this.requestsInFight.delete(requestKey)
     if (!commits) {
       return null
+    }
+
+    this.storeCommits(commits)
+    return commits.map(c => c.sha)
+  }
+
+  /**
+   * Search the history of the given commitish, returning the SHAs of commits
+   * matching the search text in any of the search fields.
+   */
+  public async searchCommits(commitish: string, search: IHistorySearch) {
+    const { range } = search
+    const sinceArgs =
+      range?.unit === 'days' ? [`--since=${range.count}.days.ago`] : []
+
+    // git ANDs --grep, --author, --committer and -S, so OR them with one log per field
+    const results = await this.performFailableOperation(() =>
+      Promise.all(
+        search.fields.map(field =>
+          getCommits(this.repository, commitish, SearchResultLimit, undefined, [
+            ...getSearchArgs(field, search.text),
+            ...sinceArgs,
+          ])
+        )
+      )
+    )
+    if (!results) {
+      return null
+    }
+
+    let commits = [...new Map(results.flat().map(c => [c.sha, c])).values()]
+
+    if (range?.unit === 'commits') {
+      // git log filters before --max-count, so keep hits among the last N commits
+      const recent = await this.performFailableOperation(() =>
+        git(
+          ['rev-list', `--max-count=${range.count}`, commitish, '--'],
+          this.repository.path,
+          'getRecentCommitSHAs',
+          { successExitCodes: new Set([0, 128]) }
+        )
+      )
+      if (!recent) {
+        return null
+      }
+      const recentSHAs = new Set(recent.stdout.split('\n'))
+      commits = commits.filter(c => recentSHAs.has(c.sha))
+    }
+    if (results.length > 1) {
+      // shortcut: merged by committer date, which differs from log order on clock skew
+      commits.sort((a, b) => +b.committer.date - +a.committer.date)
     }
 
     this.storeCommits(commits)

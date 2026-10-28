@@ -7,7 +7,12 @@ import {
   ICompareBranch,
   ComparisonMode,
   IDisplayHistory,
+  HistorySearchField,
+  IHistorySearchRange,
 } from '../../lib/app-state'
+import { Button } from '../lib/button'
+import { Octicon } from '../octicons'
+import { showContextualMenu } from '../../lib/menu-item'
 import { CommitList } from './commit-list'
 import { Repository } from '../../models/repository'
 import { Branch } from '../../models/branch'
@@ -73,7 +78,32 @@ interface ICompareSidebarState {
 
   /** Data to be reordered via keyboard */
   readonly keyboardReorderData?: KeyboardInsertionData
+
+  /** The text in the history search box, applied on Enter */
+  readonly searchText: string
+
+  /** The commit data the history search looks at */
+  readonly searchFields: ReadonlyArray<HistorySearchField>
+
+  /** The recent commits to search, all history when not set */
+  readonly searchRange?: IHistorySearchRange
 }
+
+const searchFieldLabels: ReadonlyArray<[HistorySearchField, string]> = [
+  [HistorySearchField.Message, 'Commit message'],
+  [HistorySearchField.Committer, 'Committer'],
+  [HistorySearchField.Author, 'Author'],
+  [HistorySearchField.Diff, 'Diff contains (slow)'],
+]
+
+const searchRanges: ReadonlyArray<IHistorySearchRange | undefined> = [
+  undefined,
+  { unit: 'commits', count: 100 },
+  { unit: 'commits', count: 1000 },
+  { unit: 'days', count: 30 },
+  { unit: 'days', count: 100 },
+  { unit: 'days', count: 365 },
+]
 
 /** If we're within this many rows from the bottom, load the next history batch. */
 const CloseToBottomThreshold = 10
@@ -92,12 +122,36 @@ export class CompareSidebar extends React.Component<
   public constructor(props: ICompareSidebarProps) {
     super(props)
 
-    this.state = { focusedBranch: null }
+    const { formState } = props.compareState
+    const search =
+      formState.kind === HistoryTabMode.History ? formState.search : undefined
+
+    this.state = {
+      focusedBranch: null,
+      searchText: search?.text ?? '',
+      searchFields: search?.fields ?? [HistorySearchField.Message],
+      searchRange: search?.range,
+    }
   }
 
   public componentWillReceiveProps(nextProps: ICompareSidebarProps) {
     const newFormState = nextProps.compareState.formState
     const oldFormState = this.props.compareState.formState
+
+    const newSearch =
+      newFormState.kind === HistoryTabMode.History
+        ? newFormState.search
+        : undefined
+    const oldSearch =
+      oldFormState.kind === HistoryTabMode.History
+        ? oldFormState.search
+        : undefined
+
+    // keep the search box in sync when the search is changed elsewhere,
+    // e.g. cleared by a branch checkout
+    if (newSearch?.text !== oldSearch?.text) {
+      this.setState({ searchText: newSearch?.text ?? '' })
+    }
 
     if (
       newFormState.kind !== oldFormState.kind &&
@@ -162,6 +216,9 @@ export class CompareSidebar extends React.Component<
   public render() {
     const { branches, filterText, showBranchList } = this.props.compareState
     const placeholderText = getPlaceholderText(this.props.compareState)
+    // searching applies to the history of the current branch only
+    const isHistory =
+      this.props.compareState.formState.kind === HistoryTabMode.History
 
     return (
       <div id="compare-view" role="tabpanel" aria-labelledby="history-tab">
@@ -179,6 +236,27 @@ export class CompareSidebar extends React.Component<
             onKeyDown={this.onBranchFilterKeyDown}
             onSearchCleared={this.handleEscape}
           />
+          <FancyTextBox
+            ariaLabel="Search commits"
+            symbol={octicons.search}
+            displayClearButton={true}
+            placeholder="Search…"
+            value={this.state.searchText}
+            disabled={!isHistory}
+            onValueChanged={this.onSearchTextChanged}
+            onKeyDown={this.onSearchKeyDown}
+          />
+          <Button
+            className="search-fields-button"
+            onClick={this.onSearchOptionsClick}
+            disabled={!isHistory}
+            tooltip="Search options"
+            ariaLabel="Search options"
+            ariaHaspopup="menu"
+          >
+            <Octicon symbol={octicons.filter} />
+            <Octicon symbol={octicons.triangleDown} />
+          </Button>
         </div>
 
         {showBranchList ? this.renderFilterList() : this.renderCommits()}
@@ -556,6 +634,89 @@ export class CompareSidebar extends React.Component<
     })
   }
 
+  private onSearchTextChanged = (searchText: string) => {
+    this.setState({ searchText })
+
+    if (searchText.length === 0) {
+      this.clearSearch()
+    }
+  }
+
+  private onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const { searchText, searchFields, searchRange } = this.state
+      this.applySearch(searchText, searchFields, searchRange)
+    } else if (event.key === 'Escape') {
+      this.setState({ searchText: '' })
+      this.clearSearch()
+    }
+  }
+
+  private clearSearch() {
+    this.props.dispatcher.executeCompare(this.props.repository, {
+      kind: HistoryTabMode.History,
+    })
+  }
+
+  private applySearch(
+    text: string,
+    fields: ReadonlyArray<HistorySearchField>,
+    range: IHistorySearchRange | undefined
+  ) {
+    this.props.dispatcher.executeCompare(this.props.repository, {
+      kind: HistoryTabMode.History,
+      search: text.trim().length > 0 ? { text, fields, range } : undefined,
+    })
+  }
+
+  /** Re-run the applied search, if any, with new options */
+  private reapplySearch(
+    fields: ReadonlyArray<HistorySearchField>,
+    range: IHistorySearchRange | undefined
+  ) {
+    const { formState } = this.props.compareState
+    if (formState.kind === HistoryTabMode.History && formState.search) {
+      this.applySearch(formState.search.text, fields, range)
+    }
+  }
+
+  private onSearchOptionsClick = () => {
+    const { searchFields, searchRange } = this.state
+
+    showContextualMenu([
+      ...searchFieldLabels.map(([field, label]) => ({
+        label,
+        type: 'checkbox' as const,
+        checked: searchFields.includes(field),
+        // keep at least one field to search in
+        enabled: searchFields.length > 1 || searchFields[0] !== field,
+        action: () => this.onSearchFieldToggled(field),
+      })),
+      { type: 'separator' },
+      ...searchRanges.map(range => ({
+        label: getSearchRangeLabel(range),
+        type: 'checkbox' as const,
+        checked: JSON.stringify(range) === JSON.stringify(searchRange),
+        action: () => this.onSearchRangeSelected(range),
+      })),
+    ])
+  }
+
+  private onSearchFieldToggled = (field: HistorySearchField) => {
+    const { searchFields } = this.state
+    const fields = searchFieldLabels
+      .map(([f]) => f)
+      .filter(f => (f === field) !== searchFields.includes(f))
+    this.setState({ searchFields: fields })
+    this.reapplySearch(fields, this.state.searchRange)
+  }
+
+  private onSearchRangeSelected = (range: IHistorySearchRange | undefined) => {
+    this.setState({ searchRange: range })
+    this.reapplySearch(this.state.searchFields, range)
+  }
+
   private clearFilterState = () => {
     this.setState({
       focusedBranch: null,
@@ -740,6 +901,12 @@ function getPlaceholderText(state: ICompareState) {
   } else {
     return undefined
   }
+}
+
+function getSearchRangeLabel(range: IHistorySearchRange | undefined) {
+  return range === undefined
+    ? 'All commits'
+    : `Last ${formatNumber(range.count)} ${range.unit}`
 }
 
 // determine if the `onRevertCommit` function should be exposed to the CommitList/CommitListItem.

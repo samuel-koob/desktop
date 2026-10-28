@@ -157,6 +157,7 @@ import {
   ICompareFormUpdate,
   ICompareToBranch,
   IDisplayHistory,
+  IHistorySearch,
   PossibleSelections,
   RepositorySectionTab,
   SelectionType,
@@ -1804,9 +1805,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
         previousTip !== null &&
         currentSha === previousTip
 
+      const { search } = action
+
       if (
         tipIsUnchanged &&
         formState.kind === HistoryTabMode.History &&
+        isSameHistorySearch(formState.search, search) &&
         commitSHAs.length > 0
       ) {
         // don't refresh the history view here because we know nothing important
@@ -1814,8 +1818,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         return
       }
 
-      // load initial group of commits for current branch
-      const commits = await gitStore.loadCommitBatch('HEAD', 0)
+      // load initial group of commits (or the search results) for current branch
+      const commits = search
+        ? await gitStore.searchCommits('HEAD', search)
+        : await gitStore.loadCommitBatch('HEAD', 0)
 
       if (commits === null) {
         return
@@ -1823,6 +1829,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
       const newState: IDisplayHistory = {
         kind: HistoryTabMode.History,
+        search,
       }
 
       this.repositoryStateCache.updateCompareState(repository, () => ({
@@ -1968,7 +1975,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     const state = this.repositoryStateCache.get(repository)
     const { formState } = state.compareState
-    if (formState.kind === HistoryTabMode.History) {
+    // search results are loaded all at once
+    if (formState.kind === HistoryTabMode.History && !formState.search) {
       const commits = state.compareState.commitSHAs
 
       const tip = state.branchesState.tip
@@ -10939,6 +10947,7 @@ function getInitialAction(
   if (cachedState.kind === HistoryTabMode.History) {
     return {
       kind: HistoryTabMode.History,
+      search: cachedState.search,
     }
   }
 
@@ -10949,6 +10958,10 @@ function getInitialAction(
     comparisonMode,
     branch: comparisonBranch,
   }
+}
+
+function isSameHistorySearch(a?: IHistorySearch, b?: IHistorySearch) {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 function userIsStartingMultiCommitOperation(
