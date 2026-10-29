@@ -72,7 +72,7 @@ import { findDOMNode } from 'react-dom'
 import escapeRegExp from 'lodash/escapeRegExp'
 import ReactDOM from 'react-dom'
 import { AriaLiveContainer } from '../accessibility/aria-live-container'
-import { getNumber, setNumber } from '../../lib/local-storage'
+import { getFloatNumber, setNumber } from '../../lib/local-storage'
 import { clamp } from '../../lib/clamp'
 
 const DefaultRowHeight = 20
@@ -277,7 +277,11 @@ export class SideBySideDiff extends React.Component<
       selectingTextInRow: 'before',
       lastExpandedHunk: null,
       ariaLiveMessage: '',
-      beforeColumnRatio: getNumber(BeforeColumnRatioKey, 0.5),
+      beforeColumnRatio: clamp(
+        getFloatNumber(BeforeColumnRatioKey, 0.5),
+        0.1,
+        0.9
+      ),
     }
   }
 
