@@ -6,6 +6,7 @@ export type MenuEvent =
   | 'show-changes'
   | 'show-history'
   | 'add-local-repository'
+  | 'add-local-repositories'
   | 'create-branch'
   | 'show-branches'
   | 'show-worktrees'
@@ -92,7 +93,6 @@ const TestMenuEvents = [
   'test-prioritized-update-banner',
   'test-update-existing-git-lfs-filters',
   'test-upstream-already-exists',
-  'test-about-dialog',
   'test-cli-action',
 ] as const
 

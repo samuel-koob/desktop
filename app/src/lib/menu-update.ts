@@ -136,6 +136,7 @@ const allMenuIds: ReadonlyArray<MenuIDs> = [
   'remove-repository',
   'new-repository',
   'add-local-repository',
+  'add-local-repositories',
   'clone-repository',
   'about',
   'create-pull-request',
@@ -414,6 +415,7 @@ function getInWelcomeFlowBuilder(inWelcomeFlow: boolean): MenuStateBuilder {
   const welcomeScopedIds: ReadonlyArray<MenuIDs> = [
     'new-repository',
     'add-local-repository',
+    'add-local-repositories',
     'clone-repository',
     'preferences',
     'about',

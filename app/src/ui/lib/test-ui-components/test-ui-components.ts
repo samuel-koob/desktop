@@ -169,8 +169,6 @@ export function showTestUI(
       return dispatcher.showPopup({ type: PopupType.LFSAttributeMismatch })
     case 'test-upstream-already-exists':
       return showFakeUpstreamAlreadyExists()
-    case 'test-about-dialog':
-      return dispatcher.showPopup({ type: PopupType.TestAbout })
     case 'test-cli-action':
       return dispatcher.showPopup({ type: PopupType.TestCLIAction })
     default:

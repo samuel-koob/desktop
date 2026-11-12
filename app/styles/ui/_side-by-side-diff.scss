@@ -1,5 +1,6 @@
 .side-by-side-diff-container {
   --width-line-number: 55px;
+  --before-width: 50%;
 
   --hunk-handle-width-with-check-all: 16px;
   --hunk-handle-width: 4px;
@@ -77,6 +78,25 @@
     font-size: var(--font-size-sm);
     color: var(--diff-text-color);
     background: var(--background-color);
+    position: relative;
+  }
+
+  .column-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--before-width) - 3px);
+    width: 6px;
+    padding: 0;
+    z-index: 1;
+    cursor: col-resize;
+    background: none;
+    border: none;
+  }
+
+  // the hunk handles sit on the divider, so grab just right of them
+  &.editable .column-resize-handle {
+    left: calc(var(--before-width) + var(--hunk-handle-width-with-check-all) / 2);
   }
 
   .ReactVirtualized__Grid:focus {
@@ -134,7 +154,7 @@
 
     .before,
     .after {
-      width: 50%;
+      width: var(--before-width);
       display: flex;
       flex-direction: row;
       position: relative;
@@ -167,6 +187,7 @@
     }
 
     .after {
+      width: calc(100% - var(--before-width));
       color: var(--diff-add-text-color);
       background: var(--diff-add-background-color);
 
@@ -217,7 +238,7 @@
     .hunk-handle {
       position: absolute;
       display: flex;
-      left: calc(50% - var(--hunk-handle-width) / 2);
+      left: calc(var(--before-width) - var(--hunk-handle-width) / 2);
       color: white;
       padding-top: 3px;
       text-align: center;
@@ -251,7 +272,7 @@
       }
 
       .hunk-handle {
-        left: calc(50% - var(--hunk-handle-width-with-check-all) / 2);
+        left: calc(var(--before-width) - var(--hunk-handle-width-with-check-all) / 2);
       }
 
       input:focus-visible + label.hunk-handle {

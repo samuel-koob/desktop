@@ -38,6 +38,8 @@ export async function pull(
     ) => Promise<'abort' | 'ignore'>
     onTerminalOutputAvailable?: TerminalOutputCallback
     noVerify?: boolean
+    /** Overrides the pull.rebase config when set */
+    rebase?: boolean
   }
 ): Promise<void> {
   // Git pull forwards the remote name to its child git fetch without a `--`
@@ -104,6 +106,9 @@ export async function pull(
     ...gitRebaseArguments(),
     'pull',
     ...(await getDefaultPullDivergentBranchArguments(repository)),
+    ...(options?.rebase === undefined
+      ? []
+      : [options.rebase ? '--rebase' : '--no-rebase']),
     '--recurse-submodules',
     ...(options?.progressCallback ? ['--progress'] : []),
     ...(options?.noVerify ? ['--no-verify'] : []),

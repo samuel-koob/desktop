@@ -196,7 +196,6 @@ import { isCertificateErrorSuppressedFor } from '../lib/suppress-certificate-err
 import { webUtils } from 'electron'
 import { showTestUI } from './lib/test-ui-components/test-ui-components'
 import { ConfirmCommitFilteredChanges } from './changes/confirm-commit-filtered-changes-dialog'
-import { AboutTestDialog } from './about/about-test-dialog'
 import { TestCLIActionDialog } from './cli-action/test-cli-action-dialog'
 import { TestCopilotSnapshotCardDialog } from './preferences/test-copilot-snapshot-card-dialog'
 import { TestTokenExpirationDialog } from './preferences/test-token-expiration-dialog'
@@ -473,6 +472,8 @@ export class App extends React.Component<IAppProps, IAppState> {
         return this.chooseRepository()
       case 'add-local-repository':
         return this.showAddLocalRepo()
+      case 'add-local-repositories':
+        return this.props.dispatcher.addRepositoriesFromDirectory()
       case 'create-branch':
         return this.showCreateBranch()
       case 'show-branches':
@@ -660,7 +661,13 @@ export class App extends React.Component<IAppProps, IAppState> {
     inBackground: boolean,
     skipGuidCheck: boolean = false
   ) {
-    if (__LINUX__ || __RELEASE_CHANNEL__ === 'development') {
+    // This fork has no update server of its own, and GitHub's would replace it
+    // with upstream GitHub Desktop.
+    if (
+      __LINUX__ ||
+      __RELEASE_CHANNEL__ === 'development' ||
+      __UPDATES_URL__.startsWith('https://central.github.com/')
+    ) {
       return
     }
 
@@ -1984,11 +1991,8 @@ export class App extends React.Component<IAppProps, IAppState> {
             applicationName={getName()}
             applicationVersion={version}
             applicationArchitecture={process.arch}
-            onCheckForNonStaggeredUpdates={this.onCheckForNonStaggeredUpdates}
             onShowAcknowledgements={this.showAcknowledgements}
             onShowTermsAndConditions={this.showTermsAndConditions}
-            updateState={this.state.updateState}
-            onQuitAndInstall={this.onQuitAndInstall}
           />
         )
       case PopupType.PublishRepository:
@@ -2183,6 +2187,11 @@ export class App extends React.Component<IAppProps, IAppState> {
             key="push-needs-pull"
             dispatcher={this.props.dispatcher}
             repository={popup.repository}
+            fromPull={popup.fromPull}
+            pullWithRebase={
+              this.props.repositoryStateManager.get(popup.repository)
+                .branchesState.pullWithRebase
+            }
             onDismissed={onPopupDismissedFn}
           />
         )
@@ -2538,6 +2547,10 @@ export class App extends React.Component<IAppProps, IAppState> {
             dispatcher={this.props.dispatcher}
             repository={repository}
             commit={commit}
+            hasUncommittedChanges={
+              this.props.repositoryStateManager.get(repository).changesState
+                .workingDirectory.files.length > 0
+            }
             onDismissed={onPopupDismissedFn}
           />
         )
@@ -2819,15 +2832,6 @@ export class App extends React.Component<IAppProps, IAppState> {
           />
         )
       }
-      case PopupType.TestAbout:
-        return (
-          <AboutTestDialog
-            key="about"
-            onDismissed={onPopupDismissedFn}
-            onShowAcknowledgements={this.showAcknowledgements}
-            onShowTermsAndConditions={this.showTermsAndConditions}
-          />
-        )
       case PopupType.TestCLIAction:
         return (
           <TestCLIActionDialog
@@ -3254,9 +3258,6 @@ export class App extends React.Component<IAppProps, IAppState> {
     this.props.dispatcher.openShell(path, true)
   }
 
-  private onCheckForNonStaggeredUpdates = () =>
-    this.checkForUpdates(false, true)
-
   private onSaveCopilotBYOKProvider = (
     provider: IBYOKProvider,
     secret: string | null | undefined
@@ -3279,8 +3280,6 @@ export class App extends React.Component<IAppProps, IAppState> {
   private showTermsAndConditions = () => {
     this.props.dispatcher.showPopup({ type: PopupType.TermsAndConditions })
   }
-
-  private onQuitAndInstall = () => updateStore.quitAndInstallUpdate()
 
   private renderPopups() {
     const popupContent = this.allPopupContent()

@@ -31,6 +31,30 @@
     flex: initial;
     padding: var(--spacing-half);
     border-bottom: var(--base-border);
+    display: flex;
+    gap: var(--spacing-half);
+
+    // let both boxes shrink below their input's intrinsic width
+    .fancy-text-box-component,
+    .text-box-component {
+      flex: 1;
+      min-width: 0;
+    }
+
+    // branch box ends half a gap left of center, lining up with the tabs above
+    .fancy-text-box-component:first-child {
+      flex: 0 0 calc(50% - var(--spacing-half) / 2);
+    }
+
+    input {
+      min-width: 0;
+    }
+
+    .search-fields-button {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 var(--spacing-half);
+    }
   }
 
   .compare-commit-list {

@@ -1,9 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - development
+  # No push trigger: Build already builds development after each merge.
   pull_request:
   workflow_call:
     inputs:
@@ -81,11 +79,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15-xlarge, windows-2022]
+        # No macOS builds in this fork; Mac users can use the official app.
+        os: [windows-2022]
         arch: [x64, arm64]
         include:
-          - os: macos-15-xlarge
-            friendlyName: macOS
           - os: windows-2022
             friendlyName: Windows
     timeout-minutes: 60
@@ -205,9 +202,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-xlarge
-            friendlyName: macOS
-            arch: arm64
           - os: windows-2022
             friendlyName: Windows
             arch: x64

@@ -22,6 +22,8 @@
           '-Werror',
           '-fPIC',
           '-pie',
+          # Ubuntu's gcc predefines _FORTIFY_SOURCE; gcc 11 errors on redefining it under -Werror.
+          '-U_FORTIFY_SOURCE',
           '-D_FORTIFY_SOURCE=1',
           '-fstack-protector-strong',
           '-Werror=format-security',

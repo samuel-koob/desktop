@@ -157,6 +157,7 @@ import {
   ICompareFormUpdate,
   ICompareToBranch,
   IDisplayHistory,
+  IHistorySearch,
   PossibleSelections,
   RepositorySectionTab,
   SelectionType,
@@ -401,6 +402,7 @@ import {
 } from './notifications-store'
 import * as ipcRenderer from '../ipc-renderer'
 import { pathExists } from '../path-exists'
+import { findChildRepositories } from '../find-child-repositories'
 import { offsetFromNow } from '../offset-from'
 import { findContributionTargetDefaultBranch } from '../branch'
 import { ValidNotificationPullRequestReview } from '../valid-notification-pull-request-review'
@@ -1803,9 +1805,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
         previousTip !== null &&
         currentSha === previousTip
 
+      const { search } = action
+
       if (
         tipIsUnchanged &&
         formState.kind === HistoryTabMode.History &&
+        isSameHistorySearch(formState.search, search) &&
         commitSHAs.length > 0
       ) {
         // don't refresh the history view here because we know nothing important
@@ -1813,8 +1818,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         return
       }
 
-      // load initial group of commits for current branch
-      const commits = await gitStore.loadCommitBatch('HEAD', 0)
+      // load initial group of commits (or the search results) for current branch
+      const commits = search
+        ? await gitStore.searchCommits('HEAD', search)
+        : await gitStore.loadCommitBatch('HEAD', 0)
 
       if (commits === null) {
         return
@@ -1822,6 +1829,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
       const newState: IDisplayHistory = {
         kind: HistoryTabMode.History,
+        search,
       }
 
       this.repositoryStateCache.updateCompareState(repository, () => ({
@@ -1967,7 +1975,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     const state = this.repositoryStateCache.get(repository)
     const { formState } = state.compareState
-    if (formState.kind === HistoryTabMode.History) {
+    // search results are loaded all at once
+    if (formState.kind === HistoryTabMode.History && !formState.search) {
       const commits = state.compareState.commitSHAs
 
       const tip = state.branchesState.tip
@@ -5480,14 +5489,33 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
-  public async _pull(repository: Repository): Promise<void> {
+  public async _pull(repository: Repository, rebase?: boolean): Promise<void> {
+    const { aheadBehind } = this.repositoryStateCache.get(repository)
+
+    // A diverged branch can be merged or rebased, so let the user pick
+    if (
+      rebase === undefined &&
+      aheadBehind !== null &&
+      aheadBehind.ahead > 0 &&
+      aheadBehind.behind > 0
+    ) {
+      return this._showPopup({
+        type: PopupType.PushNeedsPull,
+        repository,
+        fromPull: true,
+      })
+    }
+
     return this.withRefreshedGitHubRepository(repository, repository => {
-      return this.performPull(repository)
+      return this.performPull(repository, rebase)
     })
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
-  private async performPull(repository: Repository): Promise<void> {
+  private async performPull(
+    repository: Repository,
+    rebase?: boolean
+  ): Promise<void> {
     return this.withPushPullFetch(repository, async () => {
       const gitStore = this.gitStoreCache.get(repository)
       const remote = gitStore.currentRemote
@@ -5552,9 +5580,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
           const retryAction: RetryAction = {
             type: RetryActionType.Pull,
             repository,
+            rebase,
           }
 
-          if (gitStore.pullWithRebase) {
+          if (rebase ?? gitStore.pullWithRebase) {
             this.statsStore.increment('pullWithRebaseCount')
           } else {
             this.statsStore.increment('pullWithDefaultSettingCount')
@@ -5565,6 +5594,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
             .performFailableOperation(
               async () => {
                 await pullRepo(repository, remote, {
+                  rebase,
                   progressCallback: progress => {
                     this.updatePushPullFetchProgress(repository, {
                       ...progress,
@@ -5862,16 +5892,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public async _resetToCommit(
     repository: Repository,
     commit: Commit,
-    showConfirmationDialog: boolean
+    showConfirmationDialog: boolean,
+    mode: GitResetMode = GitResetMode.Mixed
   ): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
-    const repositoryState = this.repositoryStateCache.get(repository)
-    const { changesState } = repositoryState
-    const isWorkingDirectoryClean =
-      changesState.workingDirectory.files.length === 0
 
-    // Warn the user if there are changes in the working directory
-    if (showConfirmationDialog && !isWorkingDirectoryClean) {
+    // Let the user pick the reset mode (and warn about changes in progress)
+    if (showConfirmationDialog) {
       return this._showPopup({
         type: PopupType.WarningBeforeReset,
         repository,
@@ -5886,10 +5913,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
 
     await gitStore.performFailableOperation(() =>
-      reset(repository, GitResetMode.Mixed, commit.sha)
+      reset(repository, mode, commit.sha)
     )
-
-    // this.statsStore.recordCommitUndone(isWorkingDirectoryClean)
 
     return this._refreshRepository(repository)
   }
@@ -8333,6 +8358,24 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     return addedRepositories
+  }
+
+  /** Add all repositories directly inside a directory the user picks */
+  public async _addRepositoriesFromDirectory(): Promise<void> {
+    const path = await showOpenDialog({ properties: ['openDirectory'] })
+
+    if (path === null) {
+      return
+    }
+
+    const repositoryPaths = await findChildRepositories(path)
+
+    if (repositoryPaths.length === 0) {
+      this.emitError(new Error(`No Git repositories found in ${path}.`))
+      return
+    }
+
+    await this._addRepositories(repositoryPaths)
   }
 
   public async _relocateRepository(repository: Repository): Promise<void> {
@@ -10904,6 +10947,7 @@ function getInitialAction(
   if (cachedState.kind === HistoryTabMode.History) {
     return {
       kind: HistoryTabMode.History,
+      search: cachedState.search,
     }
   }
 
@@ -10914,6 +10958,10 @@ function getInitialAction(
     comparisonMode,
     branch: comparisonBranch,
   }
+}
+
+function isSameHistorySearch(a?: IHistorySearch, b?: IHistorySearch) {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 function userIsStartingMultiCommitOperation(
